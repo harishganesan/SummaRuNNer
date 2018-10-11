@@ -28,6 +28,7 @@ parser.add_argument('-kernel_sizes',type=str,default='3,4,5')
 parser.add_argument('-model',type=str,default='RNN_RNN')
 parser.add_argument('-hidden_size',type=int,default=200)
 # train
+parser.add_argument('-logfile', type=str)
 parser.add_argument('-lr',type=float,default=1e-3)
 parser.add_argument('-batch_size',type=int,default=32)
 parser.add_argument('-epochs',type=int,default=5)
@@ -77,7 +78,7 @@ def eval(net,vocab,data_iter,criterion):
             targets = targets.cuda()
         probs = net(features,doc_lens)
         loss = criterion(probs,targets)
-        total_loss += loss.data[0]
+        total_loss += loss.data.item()
         batch_num += 1
     loss = total_loss / batch_num
     net.train()
@@ -98,6 +99,11 @@ def train():
     with open(args.val_dir) as f:
         examples = [json.loads(line) for line in f]
     val_dataset = utils.Dataset(examples)
+
+    logbatch = logepoch = None
+    if args.logfile:
+        logbatch = open(args.logfile + '.log', 'w', buffering=1)
+        logepoch = open(args.logfile + '.2.log', 'w', buffering=1)
 
     # update args
     args.embed_num = embed.size(0)
@@ -127,7 +133,7 @@ def train():
     
     t1 = time() 
     for epoch in range(1,args.epochs+1):
-        for i,batch in enumerate(train_iter):
+        for i,batch in tqdm(enumerate(train_iter)):
             features,targets,_,doc_lens = vocab.make_features(batch)
             features,targets = Variable(features), Variable(targets.float())
             if use_gpu:
@@ -140,17 +146,22 @@ def train():
             clip_grad_norm(net.parameters(), args.max_norm)
             optimizer.step()
             if args.debug:
-                print('Batch ID:%d Loss:%f' %(i,loss.data[0]))
-                continue
+                if logbatch:
+                    logbatch.write('{}:{}\n'.format(i, loss.data.item()))
+                print('Batch ID:%d Loss:%f' %(i,loss.data.item()))
             if i % args.report_every == 0:
                 cur_loss = eval(net,vocab,val_iter,criterion)
                 if cur_loss < min_loss:
                     min_loss = cur_loss
                     best_path = net.save()
-                logging.info('Epoch: %2d Min_Val_Loss: %f Cur_Val_Loss: %f'
-                        % (epoch,min_loss,cur_loss))
+                if logepoch:
+                    logepoch.write('{}:{}:{}\n'.format(epoch, min_loss, cur_loss))
+                logging.info('Epoch: %2d Min_Val_Loss: %f Cur_Val_Loss: %f' % (epoch,min_loss,cur_loss))
     t2 = time()
-    logging.info('Total Cost:%f h'%((t2-t1)/3600))
+    logging.info('Total time:%f h'%((t2-t1)/3600))
+    if args.logfile:
+        logbatch.close()
+        logepoch.close()
 
 def test():
      
@@ -167,7 +178,7 @@ def test():
                             batch_size=args.batch_size,
                             shuffle=False)
     if use_gpu:
-        checkpoint = torch.load(args.load_dir)
+        checkpoint = torch.load(args.load_dir, map_location='cuda:0')
     else:
         checkpoint = torch.load(args.load_dir, map_location=lambda storage, loc: storage)
 
