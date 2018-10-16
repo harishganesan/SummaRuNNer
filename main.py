@@ -67,6 +67,7 @@ random.seed(args.seed)
 numpy.random.seed(args.seed) 
     
 def eval(net,vocab,data_iter,criterion):
+    # function calculates aggregate loss on validation set
     net.eval()
     total_loss = 0
     batch_num = 0
@@ -86,16 +87,19 @@ def eval(net,vocab,data_iter,criterion):
 
 def train():
     logging.info('Loading vocab,train and val dataset.Wait a second,please')
-    
+    # load word embeddings
     embed = torch.Tensor(np.load(args.embedding)['embedding'])
+    # load word2id dictionary
     with open(args.word2id) as f:
         word2id = json.load(f)
     vocab = utils.Vocab(embed, word2id)
 
+    # load train dataset
     with open(args.train_dir) as f:
         examples = [json.loads(line) for line in f]
     train_dataset = utils.Dataset(examples)
 
+    # load validation dataset
     with open(args.val_dir) as f:
         examples = [json.loads(line) for line in f]
     val_dataset = utils.Dataset(examples)
@@ -109,11 +113,11 @@ def train():
     args.embed_num = embed.size(0)
     args.embed_dim = embed.size(1)
     args.kernel_sizes = [int(ks) for ks in args.kernel_sizes.split(',')]
-    # build model
+    # instantiate model
     net = getattr(models,args.model)(args,embed)
     if use_gpu:
         net.cuda()
-    # load dataset
+    # instantiate dataset batchers
     train_iter = DataLoader(dataset=train_dataset,
             batch_size=args.batch_size,
             shuffle=True)
@@ -139,11 +143,17 @@ def train():
             if use_gpu:
                 features = features.cuda()
                 targets = targets.cuda()
+            # make forward propogation
             probs = net(features,doc_lens)
+            # calculate loss
             loss = criterion(probs,targets)
+            # clear gradients
             optimizer.zero_grad()
+            # back propogation
             loss.backward()
+            # clip the gradient
             clip_grad_norm(net.parameters(), args.max_norm)
+            # perform a single optimization step
             optimizer.step()
             if args.debug:
                 if logbatch:
@@ -164,16 +174,19 @@ def train():
         logepoch.close()
 
 def test():
-     
+    # load word embeddings
     embed = torch.Tensor(np.load(args.embedding)['embedding'])
+    # load word2id dictionary
     with open(args.word2id) as f:
         word2id = json.load(f)
     vocab = utils.Vocab(embed, word2id)
 
+    # load test dataset
     with open(args.test_dir) as f:
         examples = [json.loads(line) for line in f]
     test_dataset = utils.Dataset(examples)
 
+    # instantiate batcher
     test_iter = DataLoader(dataset=test_dataset,
                             batch_size=args.batch_size,
                             shuffle=False)
@@ -186,7 +199,9 @@ def test():
     # if at test time, we are using a CPU, we must override device to None
     if not use_gpu:
         checkpoint['args'].device = None
+    # load the model and instantiate it
     net = getattr(models,checkpoint['args'].model)(checkpoint['args'])
+    # load pretrained states
     net.load_state_dict(checkpoint['model'])
     if use_gpu:
         net.cuda()
@@ -198,22 +213,32 @@ def test():
     for batch in tqdm(test_iter):
         features,_,summaries,doc_lens = vocab.make_features(batch)
         t1 = time()
+        # run the model over all the sentences of the batch
         if use_gpu:
             probs = net(Variable(features).cuda(), doc_lens)
         else:
             probs = net(Variable(features), doc_lens)
+        # probs: probabilities of all sentences of all the documents in the batch
         t2 = time()
         time_cost += t2 - t1
         start = 0
         for doc_id,doc_len in enumerate(doc_lens):
-            stop = start + doc_len
-            prob = probs[start:stop]
+            stop = start + doc_len  # index of the last sentencse doc with doc_id
+            # probabilities of sentences of doc with doc_id
+            prob = probs[start:stop] if probs.dim() == 1 else torch.Tensor([probs])
+            # how many top sentences to pick ?
             topk = min(args.topk,doc_len)
+            # indices of k sentences with highest probabilities
             topk_indices = prob.topk(topk)[1].cpu().data.numpy()
+            # sort the indices
             topk_indices.sort()
+            # get full doc splitted by sentences
             doc = batch['doc'][doc_id].split('\n')[:doc_len]
+            # get topk sentences from the doc
             hyp = [doc[index] for index in topk_indices]
+            # get golden summary for the doc
             ref = summaries[doc_id]
+            # save machine and golden summary for the doc
             with open(os.path.join(args.ref,str(file_id)+'.txt'), 'w') as f:
                 f.write(ref)
             with open(os.path.join(args.hyp,str(file_id)+'.txt'), 'w') as f:

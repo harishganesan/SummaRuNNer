@@ -9,21 +9,23 @@ class BasicModule(torch.nn.Module):
 
     def pad_doc(self,words_out,doc_lens):
         pad_dim = words_out.size(1)
+        # max number of sentences
         max_doc_len = max(doc_lens)
         sent_input = []
         start = 0
         for doc_len in doc_lens:
+            # index of the last sentence in the doc
             stop = start + doc_len
-            valid = words_out[start:stop]                                       # (doc_len,2*H)
+            valid = words_out[start:stop]  # [docLength, 2*HiddenStates]
             start = stop
             if doc_len == max_doc_len:
-                sent_input.append(valid.unsqueeze(0))
+                sent_input.append(valid.unsqueeze(0)) # [1, docMaxLength, 2*HiddenStates]
             else:
                 pad = Variable(torch.zeros(max_doc_len-doc_len,pad_dim))
                 if self.args.device is not None:
                     pad = pad.cuda()
-                sent_input.append(torch.cat([valid,pad]).unsqueeze(0))          # (1,max_len,2*H)
-        sent_input = torch.cat(sent_input,dim=0)                                # (B,max_len,2*H)
+                sent_input.append(torch.cat([valid,pad]).unsqueeze(0))
+        sent_input = torch.cat(sent_input,dim=0) # [docs, docMaxLength, 2*HiddenStates]
         return sent_input
     
     def save(self):
