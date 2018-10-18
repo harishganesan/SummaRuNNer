@@ -28,9 +28,10 @@ class BasicModule(torch.nn.Module):
         sent_input = torch.cat(sent_input,dim=0) # [docs, docMaxLength, 2*HiddenStates]
         return sent_input
     
-    def save(self):
+    def save(self, **kwars):
         checkpoint = {'model':self.state_dict(), 'args': self.args}
-        best_path = '%s%s_seed_%d.pt' % (self.args.save_dir,self.model_name,self.args.seed)
+        best_path = '%s%s_seed_%d_epoch_%d_i_%d.pt' % (
+            self.args.save_dir,self.model_name,self.args.seed, kwargs['epoch'], kwargs['i'])
         torch.save(checkpoint,best_path)
 
         return best_path

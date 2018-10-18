@@ -159,11 +159,11 @@ def train():
                 if logbatch:
                     logbatch.write('{}:{}\n'.format(i, loss.data.item()))
                 print('Batch ID:%d Loss:%f' %(i,loss.data.item()))
-            if i % args.report_every == 0:
+            if (epoch == 0 and i in [1, 5000]) or (epoch == 2 and i == 2000):
                 cur_loss = eval(net,vocab,val_iter,criterion)
                 if cur_loss < min_loss:
                     min_loss = cur_loss
-                    best_path = net.save()
+                    best_path = net.save(epoch=epoch, i=i)
                 if logepoch:
                     logepoch.write('{}:{}:{}\n'.format(epoch, min_loss, cur_loss))
                 logging.info('Epoch: %2d Min_Val_Loss: %f Cur_Val_Loss: %f' % (epoch,min_loss,cur_loss))
