@@ -31,7 +31,7 @@ parser.add_argument('-hidden_size',type=int,default=200)
 parser.add_argument('-logfile', type=str)
 parser.add_argument('-lr',type=float,default=1e-3)
 parser.add_argument('-batch_size',type=int,default=32)
-parser.add_argument('-epochs',type=int,default=5)
+parser.add_argument('-epochs',type=int,default=3)
 parser.add_argument('-seed',type=int,default=1)
 parser.add_argument('-train_dir',type=str,default='data/train.json')
 parser.add_argument('-val_dir',type=str,default='data/val.json')
@@ -159,7 +159,7 @@ def train():
                 if logbatch:
                     logbatch.write('{}:{}\n'.format(i, loss.data.item()))
                 print('Batch ID:%d Loss:%f' %(i,loss.data.item()))
-            if (epoch == 0 and i in [1, 5000]) or (epoch == 2 and i == 2000):
+            if (epoch == 1 and i in [1, 5000]) or (epoch == 3 and i == 2000):
                 cur_loss = eval(net,vocab,val_iter,criterion)
                 if cur_loss < min_loss:
                     min_loss = cur_loss
