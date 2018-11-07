@@ -13,3 +13,5 @@ outputs/hyp/*
 outputs/ref/*
 !outputs/ref/.placeholder
 
+.vscode
+.vscode/*
