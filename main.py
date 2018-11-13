@@ -2,7 +2,7 @@
 
 import json
 import models
-import utils
+from utils import BatchLoader
 import argparse,random,logging,numpy,os
 import torch
 import torch.nn as nn
@@ -14,8 +14,8 @@ from torch.nn.utils import clip_grad_norm
 from time import time
 from tqdm import tqdm
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s [INFO] %(message)s')
-parser = argparse.ArgumentParser(description='extractive summary')
+parser = argparse.ArgumentParser()
+
 # model
 parser.add_argument('-save_dir',type=str,default='checkpoints/')
 parser.add_argument('-embed_dim',type=int,default=100)
@@ -23,9 +23,6 @@ parser.add_argument('-embed_num',type=int,default=100)
 parser.add_argument('-pos_dim',type=int,default=50)
 parser.add_argument('-pos_num',type=int,default=100)
 parser.add_argument('-seg_num',type=int,default=10)
-parser.add_argument('-kernel_num',type=int,default=100)
-parser.add_argument('-kernel_sizes',type=str,default='3,4,5')
-parser.add_argument('-model',type=str,default='RNN_RNN')
 parser.add_argument('-hidden_size',type=int,default=200)
 # train
 parser.add_argument('-logfile', type=str)
@@ -33,13 +30,11 @@ parser.add_argument('-lr',type=float,default=1e-3)
 parser.add_argument('-batch_size',type=int,default=32)
 parser.add_argument('-epochs',type=int,default=5)
 parser.add_argument('-seed',type=int,default=1)
-parser.add_argument('-train_dir',type=str,default='data/train.json')
-parser.add_argument('-val_dir',type=str,default='data/val.json')
-parser.add_argument('-embedding',type=str,default='data/embedding.npz')
-parser.add_argument('-word2id',type=str,default='data/word2id.json')
+parser.add_argument('-train_dir',type=str,default='train_dir')
+# parser.add_argument('-val_dir',type=str,default='data/val.json')
 parser.add_argument('-report_every',type=int,default=1500)
-parser.add_argument('-seq_trunc',type=int,default=50)
 parser.add_argument('-max_norm',type=float,default=1.0)
+parser.add_argument('-use_trained', type=str,default='')
 # test
 parser.add_argument('-load_dir',type=str,default='checkpoints/RNN_RNN_seed_1.pt')
 parser.add_argument('-test_dir',type=str,default='data/test.json')
@@ -49,11 +44,20 @@ parser.add_argument('-topk',type=int,default=3)
 # device
 parser.add_argument('-device',type=int)
 # option
+parser.add_argument('-word2id',type=str,default='data/word2id.json')
+parser.add_argument('-embedding',type=str,default='data/embedding.npz')
+parser.add_argument('-max_doc_length',type=int,default=100)
+parser.add_argument('-max_sent_length',type=int,default=50)
+parser.add_argument('-target_label_size',type=int,default=2)
+parser.add_argument('-num_sample_rollout',type=int,default=10)
+parser.add_argument('-preprocessed_data_dir',type=str,default='data/preprocessed')
+parser.add_argument('-data_mode',type=str,default='cnn')
 parser.add_argument('-test',action='store_true')
-parser.add_argument('-debug',action='store_true')
-parser.add_argument('-predict',action='store_true')
+
+
 args = parser.parse_args()
 use_gpu = args.device is not None
+
 
 if torch.cuda.is_available() and not use_gpu:
     print("WARNING: You have a CUDA device, should run with -device 0")
@@ -65,84 +69,92 @@ torch.cuda.manual_seed(args.seed)
 torch.manual_seed(args.seed)
 random.seed(args.seed)
 numpy.random.seed(args.seed) 
-    
-def eval(net,vocab,data_iter,criterion):
-    # function calculates aggregate loss on validation set
-    net.eval()
-    total_loss = 0
-    batch_num = 0
-    for batch in data_iter:
-        features,targets,_,doc_lens = vocab.make_features(batch)
-        features,targets = Variable(features), Variable(targets.float())
-        if use_gpu:
-            features = features.cuda()
-            targets = targets.cuda()
-        probs = net(features,doc_lens)
-        loss = criterion(probs,targets)
-        total_loss += loss.data.item()
-        batch_num += 1
-    loss = total_loss / batch_num
-    net.train()
-    return loss
+
+
+def get_logger():
+    logging.basicConfig(format='%(asctime)s,%(msecs)-2d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
+                        datefmt='%d-%m-%Y:%H:%M:%S',
+                        filename=args.logfile,
+                        level=logging.INFO)
+    logger = logging.getLogger('SummaRuNNer-RNN-RL')
+    return logger
+
+# def eval(net,vocab,data_iter,criterion):
+#     # function calculates aggregate loss on validation set
+#     net.eval()
+#     total_loss = 0
+#     batch_num = 0
+#     for batch in data_iter:
+#         features,targets,_,doc_lens = vocab.make_features(batch)
+#         features,targets = Variable(features), Variable(targets.float())
+#         if use_gpu:
+#             features = features.cuda()
+#             targets = targets.cuda()
+#         probs = net(features,doc_lens)
+#         loss = criterion(probs,targets)
+#         total_loss += loss.data.item()
+#         batch_num += 1
+#     loss = total_loss / batch_num
+#     net.train()
+#     return loss
 
 def train():
-    logging.info('Loading vocab,train and val dataset.Wait a second,please')
+    logger = get_logger()
+
+    logger.info('Loading vocabulary dictionary and word embeddings...')
+
     # load word embeddings
     embed = torch.Tensor(np.load(args.embedding)['embedding'])
+
     # load word2id dictionary
     with open(args.word2id) as f:
-        word2id = json.load(f)
-    vocab = utils.Vocab(embed, word2id)
+        vocab_dict = json.load(f)
 
-    # load train dataset
-    with open(args.train_dir) as f:
-        examples = [json.loads(line) for line in f]
-    train_dataset = utils.Dataset(examples)
+    logger.info('Loading training and validation datasets...')
 
-    # load validation dataset
-    with open(args.val_dir) as f:
-        examples = [json.loads(line) for line in f]
-    val_dataset = utils.Dataset(examples)
-
-    logbatch = logepoch = None
-    if args.logfile:
-        logbatch = open(args.logfile + '.log', 'w', buffering=1)
-        logepoch = open(args.logfile + '.2.log', 'w', buffering=1)
+    train_batcher = BatchLoader(args, vocab_dict, logger=logger, data_type='training')
+    valid_batcher = BatchLoader(args, vocab_dict, logger=logger, data_type='validation')
 
     # update args
     args.embed_num = embed.size(0)
     args.embed_dim = embed.size(1)
-    args.kernel_sizes = [int(ks) for ks in args.kernel_sizes.split(',')]
+
     # instantiate model
-    net = getattr(models,args.model)(args,embed)
+    net = models.RNN_RNN(args, embed)
+    if args.use_trained:
+        logger.info('Training pre-trained model: %s' % args.use_trained)
+        net.load_state_dict(torch.load(args.use_trained))
     if use_gpu:
         net.cuda()
-    # instantiate dataset batchers
-    train_iter = DataLoader(dataset=train_dataset,
-            batch_size=args.batch_size,
-            shuffle=True)
-    val_iter = DataLoader(dataset=val_dataset,
-            batch_size=args.batch_size,
-            shuffle=False)
-    # loss function
-    criterion = nn.BCELoss()
+    net.train()
+
+    optimizer = torch.optim.Adam(net.parameters(), lr=args.lr)
+
+    trainer = net.model_wrapper(optimizer, mode='training')
+    validator = net.model_wrapper(optimizer, mode='validation')
+
     # model info
-    print(net)
+    logger.info(net)
     params = sum(p.numel() for p in list(net.parameters())) / 1e6
-    print('#Params: %.1fM' % (params))
+    logger.info('Number of model parameters: %.1fM\n' % (params))
     
     min_loss = float('inf')
-    optimizer = torch.optim.Adam(net.parameters(),lr=args.lr)
-    net.train()
-    
     t1 = time() 
-    for epoch in range(1,args.epochs+1):
-        for i,batch in tqdm(enumerate(train_iter)):
-            features,targets,_,doc_lens = vocab.make_features(batch)
-            features,targets = Variable(features), Variable(targets.float())
-            if use_gpu:
-                features = features.cuda()
-                targets = targets.cuda()
+
+    logger.info('Training started!\n')
+    for epoch in range(args.epochs):
+
+        batch_number = 0
+
+        for batch in train_batcher.next_batch(args.batch_size):
+            # features,targets,_,doc_lens = vocab_dict.make_features(batch)
+            # features,targets = Variable(features), Variable(targets.float())
+            # if use_gpu:
+            #     features = features.cuda()
+            #     targets = targets.cuda()
+
+            loss, accuracy = trainer(batch)
+
             # make forward propogation
             probs = net(features,doc_lens)
             # calculate loss
@@ -155,23 +167,24 @@ def train():
             clip_grad_norm(net.parameters(), args.max_norm)
             # perform a single optimization step
             optimizer.step()
-            if args.debug:
-                if logbatch:
-                    logbatch.write('{}:{}\n'.format(i, loss.data.item()))
-                print('Batch ID:%d Loss:%f' %(i,loss.data.item()))
-            if i % args.report_every == 0:
-                cur_loss = eval(net,vocab,val_iter,criterion)
-                if cur_loss < min_loss:
-                    min_loss = cur_loss
-                    best_path = net.save()
-                if logepoch:
-                    logepoch.write('{}:{}:{}\n'.format(epoch, min_loss, cur_loss))
-                logging.info('Epoch: %2d Min_Val_Loss: %f Cur_Val_Loss: %f' % (epoch,min_loss,cur_loss))
+
+            # if args.debug:
+            #     if logbatch:
+            #         logbatch.write('{}:{}\n'.format(i, loss.data.item()))
+            #     print('Batch ID:%d Loss:%f' %(i,loss.data.item()))
+            # if i % args.report_every == 0:
+            #     cur_loss = eval(net,vocab_dict,val_iter,criterion)
+            #     if cur_loss < min_loss:
+            #         min_loss = cur_loss
+            #         best_path = net.save()
+            #     if logepoch:
+            #         logepoch.write('{}:{}:{}\n'.format(epoch, min_loss, cur_loss))
+            #     logging.info('Epoch: %2d Min_Val_Loss: %f Cur_Val_Loss: %f' % (epoch,min_loss,cur_loss))
+            batch_number += 1
+
     t2 = time()
     logging.info('Total time:%f h'%((t2-t1)/3600))
-    if args.logfile:
-        logbatch.close()
-        logepoch.close()
+
 
 def test():
     # load word embeddings
@@ -246,9 +259,8 @@ def test():
             start = stop
             file_id = file_id + 1
     print('Speed: %.2f docs / s' % (doc_num / time_cost))
-def predict():
-    # TODO
-    pass
+
+
 if __name__=='__main__':
     if args.test:
         test()

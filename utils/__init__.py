@@ -1,2 +1,2 @@
-from .Dataset import Dataset
 from .Vocab import Vocab
+from .BatchLoader import BatchLoader
