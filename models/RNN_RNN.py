@@ -58,7 +58,7 @@ class RNN_RNN(BasicModule):
 
     def forward(self,x,doc_lens):
         # x is three dimensional, [sentences, words, wordid]
-        # calculate length of each sentence
+        # calculate number of words in each sentence
         sent_lens = torch.sum(torch.sign(x),dim=1).data  # [39, 23, ...]
         # convert word ids into features
         x = self.embed(x) # [sentences, words, features]

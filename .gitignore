@@ -14,4 +14,5 @@ outputs/ref/*
 !outputs/ref/.placeholder
 
 .vscode
-.vscode/*
+
+train_dir/*
