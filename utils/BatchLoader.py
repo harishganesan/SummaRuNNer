@@ -3,7 +3,7 @@ import random
 
 
 class Data:
-    def __init__(self, flags, vocab_dict, data_type, logger):
+    def __init__(self, flags, data_type, logger):
         self.PAD_ID = 0
 
         self.flags = flags
@@ -18,16 +18,16 @@ class Data:
         self.data_type = data_type
 
         # populate the data
-        self.populate_data(vocab_dict, data_type)
+        self.populate_data(data_type)
 
     def __len__(self):
         return len(self.fileindices)
 
     def shuffle_fileindices(self):
         random.shuffle(self.fileindices)
+        return
 
     def get_batch(self, startidx, endidx):
-        dtype = np.float32
 
         def process_to_chop_pads(ordids, requiredsize):
             if len(ordids) >= requiredsize:
@@ -41,10 +41,10 @@ class Data:
         batch_docnames = np.empty((endidx-startidx), dtype="S60")  # file id
 
         batch_docs = []
-        batch_docs_length = np.empty(endidx-startidx, dtype='int32')
+        batch_docs_length = np.empty(endidx-startidx, dtype=np.int)
         batch_targets = []
         batch_oracle_targets = []
-        batch_rewards = np.empty(endidx - startidx, dtype=dtype)
+        batch_rewards = np.empty(endidx - startidx, dtype=np.float32)
 
         for batch_idx, fileindex in enumerate(self.fileindices[startidx:endidx]):
             # Doc name
@@ -74,13 +74,14 @@ class Data:
                 batch_rewards[batch_idx] = self.rewards[fileindex][0]
             batch_oracle_targets.extend(oracle_labels)
 
-        batch_docs = np.array(batch_docs, dtype='int32')
-        batch_targets = np.array(batch_targets, dtype='int32')
-        batch_oracle_targets = np.array(batch_oracle_targets, dtype='int32')
+        batch_docs = np.array(batch_docs, dtype=np.int)
+        batch_targets = np.array(batch_targets, dtype=np.int)
+        batch_oracle_targets = np.array(batch_oracle_targets, dtype=np.float32)
 
         return batch_docs, batch_docs_length, batch_targets, batch_oracle_targets, batch_rewards
 
-    def populate_data(self, vocab_dict, data_type):
+    def populate_data(self, data_type):
+        self.logger.info('Loading %s dataset...' % data_type)
 
         full_data_file_prefix = self.flags.preprocessed_data_dir + "/" + self.flags.data_mode + "." + data_type
 
@@ -96,17 +97,21 @@ class Data:
 
             filename = doc_lines[0].strip()
             if filename == label_lines[0].strip():
-                self.filenames.append(filename)
-
                 # Doc
                 thisdoc = []
                 for line in doc_lines[1:self.flags.max_doc_length+1]:
                     thissent = [int(item) for item in line.strip().split()]
                     thisdoc.append(thissent)
-                self.docs.append(thisdoc)
-
+                
                 # Weights
                 originaldoclen = int(label_lines[1].strip())
+
+                if originaldoclen < 2:
+                    continue
+
+                self.filenames.append(filename)
+                self.docs.append(thisdoc)
+
                 thisweight = [1 for item in range(originaldoclen)][:self.flags.max_doc_length]
                 self.weights.append(thisweight)
 
@@ -133,20 +138,23 @@ class Data:
         self.logger.info("Read {} docs".format(len(self.filenames)))
 
 
-def prepare_news_data(flags, vocab_dict, logger, data_type="training"):
-    data = Data(flags, vocab_dict, data_type, logger=logger)
+def prepare_news_data(flags, logger, data_type="training"):
+    data = Data(flags, data_type, logger=logger)
     return data
 
 
 class BatchLoader:
-    def __init__(self, flags, vocab_dict, logger, data_type="training"):
-        self.data = prepare_news_data(flags, vocab_dict, logger, data_type)
+    def __init__(self, flags, logger, data_type="training"):
+        self.data = prepare_news_data(flags, logger, data_type)
 
     def shuffle(self):
         self.data.shuffle_fileindices()
 
     def get_all_data(self):
         return self.data.get_batch(startidx=0, endidx=len(self.data))
+
+    def get_data_size(self):
+        return len(self.data)
 
     def get_batch(self, startidx, endidx):
         return self.data.get_batch(startidx, endidx)

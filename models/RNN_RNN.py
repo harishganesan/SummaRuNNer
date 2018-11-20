@@ -7,7 +7,7 @@ from torch.autograd import Variable
 class RNN_RNN(BasicModule):
     def __init__(self, args, embed=None):
         super(RNN_RNN, self).__init__(args)
-        self.model_name = 'RNN_RNN'
+        self.model_name = 'RNN_RL'
         self.args = args
         
         V = args.embed_num  # number of word embeddings
@@ -57,7 +57,7 @@ class RNN_RNN(BasicModule):
         return out
 
     def forward(self,x,doc_lens):
-        # x is three dimensional, [sentences, words, wordid]
+        # x is two dimensional, [sentences, wordid]
         # calculate number of words in each sentence
         sent_lens = torch.sum(torch.sign(x),dim=1).data  # [39, 23, ...]
         # convert word ids into features
@@ -79,7 +79,7 @@ class RNN_RNN(BasicModule):
         for index,doc_len in enumerate(doc_lens):
             # get hidden states for sentences of the document
             valid_hidden = sent_out[index,:doc_len,:]  # [sentences, 2*HiddenStates]
-            doc = F.tanh(self.fc(docs[index])).unsqueeze(0)  # [1, 2*HiddenStates]
+            doc = torch.tanh(self.fc(docs[index])).unsqueeze(0)  # [1, 2*HiddenStates]
             s = Variable(torch.zeros(1,2*H))
             if self.args.device is not None:
                 s = s.cuda()
@@ -97,7 +97,7 @@ class RNN_RNN(BasicModule):
                 abs_features = self.abs_pos_embed(abs_index).squeeze(0)  # [1, 50]
                 
                 # relative position of the sentence within segment [0, 10)
-                rel_index = int(round((position + 1) * 9.0 / doc_len))
+                rel_index = int(round((position + 1) * 9.0 / int(doc_len)))
                 rel_index = Variable(torch.LongTensor([[rel_index]]))
                 if self.args.device is not None:
                     rel_index = rel_index.cuda()
@@ -107,10 +107,10 @@ class RNN_RNN(BasicModule):
                 # classification layer
                 content = self.content(h) 
                 salience = self.salience(h,doc)
-                novelty = -1 * self.novelty(h,F.tanh(s))
+                novelty = -1 * self.novelty(h, torch.tanh(s))
                 abs_p = self.abs_pos(abs_features)
                 rel_p = self.rel_pos(rel_features)
-                prob = F.sigmoid(content + salience + novelty + abs_p + rel_p + self.bias)
+                prob = torch.sigmoid(content + salience + novelty + abs_p + rel_p + self.bias)
                 s = s + torch.mm(prob,h)
                 probs.append(prob)
         return torch.cat(probs).squeeze()  # return sentence probabilities for all documents
