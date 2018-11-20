@@ -26,6 +26,7 @@ class BasicModule(torch.nn.Module):
                 pad = Variable(torch.zeros(max_doc_len-doc_len,pad_dim))
                 if self.args.device is not None:
                     pad = pad.cuda()
+                    valid = valid.cuda()
                 sent_input.append(torch.cat([valid,pad]).unsqueeze(0))
         sent_input = torch.cat(sent_input, dim=0) # [docs, docMaxLength, 2*HiddenStates]
         return sent_input
