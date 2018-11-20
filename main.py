@@ -30,27 +30,22 @@ parser.add_argument('-lr',type=float,default=1e-3)
 parser.add_argument('-batch_size',type=int,default=20)
 parser.add_argument('-epochs',type=int,default=5)
 parser.add_argument('-seed',type=int,default=1)
-# parser.add_argument('-train_dir',type=str,default='train_dir')
 parser.add_argument('-val_per_epoch',type=int,default=8)
 parser.add_argument('-max_norm',type=float,default=1.0)
 parser.add_argument('-use_trained', type=str,default='')
 # test
 parser.add_argument('-test_model',type=str,default='checkpoints/RNN_RL_seed_1.pt')
-# parser.add_argument('-test_dir',type=str,default='data/test.json')
 parser.add_argument('-ref',type=str,default='outputs/ref')
 parser.add_argument('-hyp',type=str,default='outputs/hyp')
-# parser.add_argument('-topk',type=int,default=3)
 # device
 parser.add_argument('-device',type=int)
 # option
-parser.add_argument('-word2id',type=str,default='data/word2id.json')
 parser.add_argument('-embedding_file',type=str,default='data/1-billion-word-language-modeling-benchmark-r13output.word2vec.vec')
 parser.add_argument('-max_doc_length',type=int,default=100)
 parser.add_argument('-max_sent_length',type=int,default=50)
-parser.add_argument('-target_label_size',type=int,default=2)
 parser.add_argument('-num_sample_rollout',type=int,default=10)
 parser.add_argument('-preprocessed_data_dir',type=str,default='data/preprocessed')
-parser.add_argument('-data_mode',type=str,default='cnn')
+parser.add_argument('-data_mode',type=str,default='cnn-dailymail')
 parser.add_argument('-test',action='store_true')
 
 
@@ -129,31 +124,8 @@ def train():
         train_batcher.shuffle()
 
         for batch in train_batcher.next_batch(args.batch_size):
-            logits, loss, accuracy = trainer(batch)
-
             abs_batch = epoch * total_batches + batch_number
-            docs_processed = (batch_number + 1) * args.batch_size
-
-            logger.info('%d/%d/%d (Ep/Batch/AbBatch): Processed = %d, '
-                        'Loss = %.2f, Accuracy = %.4f', epoch, batch_number,
-                        abs_batch, docs_processed, loss*1e3, accuracy)
-
-            if batch_number % validate_every == 0:
-                # validate
-                logger.info('Validating model at %d batch...', abs_batch)
-                v_loss, v_accuracy = validator(valid_batcher)
-                v_loss *= 1e3
-                logger.info('%d/%d/%d (Ep/Batch/AbBatch): Validation loss = '
-                            '%.2f, accuracy = %.4f', epoch, batch_number,
-                            abs_batch, v_loss, v_accuracy)
-                if v_loss < min_loss:
-                    logger.info('New loss %.2f < %.2f, saving the model...',
-                                 v_loss, min_loss)
-                    path = net.save()
-                    logger.info(' model saved in %s', path)
-                else:
-                    logger.info('New loss %.2f > %.2f, keep going...',
-                                v_loss, min_loss)
+            docs_processed = batch_number * args.batch_size
 
             model_file = '%s_%d_%d_%d_seed_%d' % (
                 net.model_name, epoch, batch_number, abs_batch, args.seed)
@@ -175,6 +147,29 @@ def train():
             if epoch == 2 and batch_number == 0:
                 logger.info('Checkpoint: saving model to file %s', model_file)
                 net.save(filename=model_file)
+
+            if batch_number % validate_every == 0:
+                # validate
+                logger.info('Validating model at batch %d...', abs_batch)
+                v_loss, v_accuracy = validator(valid_batcher)
+                v_loss *= 1e3
+                logger.info('%d/%d/%d (Ep/Batch/AbBatch): Val loss = %.2f, '
+                            'Val accuracy = %.4f', epoch, batch_number, abs_batch,
+                            v_loss, v_accuracy)
+                if v_loss < min_loss:
+                    logger.info('New loss %.2f < %.2f, saving the model...',
+                                 v_loss, min_loss)
+                    path = net.save()
+                    logger.info(' model saved in %s', path)
+                else:
+                    logger.info('New loss %.2f > %.2f, keep going...',
+                                v_loss, min_loss)
+
+            logits, loss, accuracy = trainer(batch)
+
+            logger.info('%d/%d/%d (Ep/Batch/AbBatch): Processed = %d, '
+                        'Loss = %.2f, Accuracy = %.4f', epoch, batch_number,
+                        abs_batch, docs_processed, loss*1e3, accuracy)
 
             batch_number += 1
 
