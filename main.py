@@ -99,7 +99,10 @@ def train():
     if args.use_trained:
         logger.info('Training pre-trained model: %s' % args.use_trained)
         net.load(args.use_trained)
+    if args.device is not None:
+        net.cuda()
     net.train()
+
 
     optimizer = torch.optim.Adam(net.parameters(), lr=args.lr)
 
