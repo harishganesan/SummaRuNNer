@@ -75,8 +75,8 @@ def get_logger(logfile=None):
                                   datefmt='%d-%m-%Y %H:%M:%S')
     logger = logging.getLogger('SummaRuNNer-RL')
     logger.setLevel(logging.INFO)
-    if args.logfile or logfile:
-        fh = logging.FileHandler(args.logfile or logfile, mode='w')
+    if logfile or args.logfile:
+        fh = logging.FileHandler(logfile or args.logfile, mode='w')
         fh.setFormatter(formatter)
         logger.addHandler(fh)
     sh = logging.StreamHandler()
@@ -228,7 +228,6 @@ def test():
             ref = '\n'.join([
                 ' '.join(map(vocab.i2w, np.trim_zeros(sentences[t]))) for t in doc_targets
             ])
-
             hyp = '\n'.join([
                 ' '.join(map(vocab.i2w, np.trim_zeros(sentences[t]))) for t in topk_indices
             ])
