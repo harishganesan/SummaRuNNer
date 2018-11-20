@@ -58,7 +58,7 @@ class BasicModule(torch.nn.Module):
     def model_wrapper(self, optimizer, mode='training'):
         def _wrapper(data):
             data = [torch.from_numpy(data[i]) for i in range(len(data))]
-            if self.args.device:
+            if self.args.device is not None:
                 data = [data[i].cuda() for i in range(len(data))]
             [batch_docs, batch_docs_length, batch_targets, batch_oracle_targets, batch_rewards] = data
 
