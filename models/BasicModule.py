@@ -38,6 +38,8 @@ class BasicModule(torch.nn.Module):
         entropy = bce(logits, oracle_targets)
 
         reward_tensor = torch.Tensor([])
+        if self.args.device is not None:
+            reward_tensor = reward_tensor.cuda()
         for i, reward in enumerate(rewards):
             reward_tensor = torch.cat((reward_tensor, reward.repeat(int(docs_length[i]))))
 
