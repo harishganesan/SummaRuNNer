@@ -62,6 +62,11 @@ class BasicModule(torch.nn.Module):
                 data = [data[i].cuda() for i in range(len(data))]
             [batch_docs, batch_docs_length, batch_targets, batch_oracle_targets, batch_rewards] = data
 
+            print('batch_docs_length: ', batch_docs_length.type())
+            print(batch_docs.type())
+            print(batch_docs[0].type())
+            print(batch_docs[0][0].type())
+
             logits = self(batch_docs, batch_docs_length)
 
             loss = self.get_cross_entropy(logits, batch_docs_length, batch_oracle_targets, batch_rewards)
