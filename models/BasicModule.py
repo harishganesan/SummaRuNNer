@@ -21,15 +21,15 @@ class BasicModule(torch.nn.Module):
             valid = words_out[start:stop]  # [docLength, 2*HiddenStates]
             start = stop
             if doc_len == max_doc_len:
+                if self.args.device is not None:
+                    valid = valid.cuda()
                 sent_input.append(valid.unsqueeze(0)) # [1, docMaxLength, 2*HiddenStates]
             else:
                 pad = Variable(torch.zeros(max_doc_len-doc_len,pad_dim))
                 if self.args.device is not None:
                     pad = pad.cuda()
                     valid = valid.cuda()
-                    sent_input.append(torch.cat([valid,pad]).unsqueeze(0).cuda())
-                else:
-                    sent_input.append(torch.cat([valid,pad]).unsqueeze(0))
+                sent_input.append(torch.cat([valid,pad]).unsqueeze(0))
         sent_input = torch.cat(sent_input, dim=0) # [docs, docMaxLength, 2*HiddenStates]
         return sent_input
 
