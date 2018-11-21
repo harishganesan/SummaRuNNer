@@ -71,7 +71,7 @@ class Data:
                 # pick the best oracle
                 oracle_labels = [1 if (item in self.labels[fileindex][0]) else 0 for item in range(batch_docs_length[batch_idx])]
                 # pick best reward
-                batch_rewards[batch_idx] = self.rewards[fileindex][0]
+                batch_rewards.append(self.rewards[fileindex][0])
             batch_oracle_targets.extend(oracle_labels)
 
         batch_docs = np.array(batch_docs, dtype=np.int)
