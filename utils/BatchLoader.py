@@ -41,10 +41,10 @@ class Data:
         batch_docnames = np.empty((endidx-startidx), dtype="S60")  # file id
 
         batch_docs = []
-        batch_docs_length = np.empty(endidx-startidx, dtype=np.int)
+        batch_docs_length = []
         batch_targets = []
         batch_oracle_targets = []
-        batch_rewards = np.empty(endidx - startidx, dtype=np.float32)
+        batch_rewards = []
 
         for batch_idx, fileindex in enumerate(self.fileindices[startidx:endidx]):
             # Doc name
@@ -57,7 +57,7 @@ class Data:
                 batch_docs.append(sent)
 
             # Doc length
-            batch_docs_length[batch_idx] = sum(self.weights[fileindex])
+            batch_docs_length.append(sum(self.weights[fileindex]))
 
             # Target
             batch_targets.extend([1 if (item in self.labels[fileindex][0]) else 0 for item in range(batch_docs_length[batch_idx])])
@@ -66,7 +66,7 @@ class Data:
             random_oracle = random.randint(0, (self.flags.num_sample_rollout - 1))
             if random_oracle < len(self.labels[fileindex]):
                 oracle_labels = [1 if (item in self.labels[fileindex][random_oracle]) else 0 for item in range(batch_docs_length[batch_idx])]
-                batch_rewards[batch_idx] = self.rewards[fileindex][random_oracle]
+                batch_rewards.append(self.rewards[fileindex][random_oracle])
             else:
                 # pick the best oracle
                 oracle_labels = [1 if (item in self.labels[fileindex][0]) else 0 for item in range(batch_docs_length[batch_idx])]
@@ -77,6 +77,8 @@ class Data:
         batch_docs = np.array(batch_docs, dtype=np.int)
         batch_targets = np.array(batch_targets, dtype=np.int)
         batch_oracle_targets = np.array(batch_oracle_targets, dtype=np.float32)
+        batch_docs_length = np.array(batch_docs_length, dtype=np.int)
+        batch_rewards = np.array(batch_rewards, dtype=np.float32)
 
         return batch_docs, batch_docs_length, batch_targets, batch_oracle_targets, batch_rewards
 
