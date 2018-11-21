@@ -160,6 +160,7 @@ def train():
                             'Val accuracy = %.4f', epoch, batch_number, abs_batch,
                             v_loss, v_accuracy)
                 if v_loss < min_loss:
+                    min_loss = v_loss
                     logger.info('New loss %.2f < %.2f, saving the model...',
                                  v_loss, min_loss)
                     path = net.save()
