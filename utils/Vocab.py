@@ -33,8 +33,7 @@ class Vocab():
             for linecount, line in enumerate(fembedd):
                 if linecount == 0:
                     vocabsize = int(line.split()[0])
-                    word_embedding_array = np.empty((vocabsize, flags.embed_dim), dtype)
-
+                    word_embedding_array = np.empty((vocabsize+2, flags.embed_dim), dtype)
                 else:
                     linedata = line.split()
                     vocab_dict[linedata[0]] = linecount + 1
@@ -43,4 +42,5 @@ class Vocab():
 
             logger.info("Done reading pre-trained word embedding of shape {}".format(word_embedding_array.shape))
 
+        word_embedding_array[vocabsize:] = [0] * flags.embed_dim
         return vocab_dict, torch.from_numpy(word_embedding_array).float()
