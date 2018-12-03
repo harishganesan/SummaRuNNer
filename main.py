@@ -187,7 +187,7 @@ def test():
     # load word embeddings
     vocab = Vocab(args, logger)
 
-    test_batcher = BatchLoader(args, logger=logger, data_type='validation') # TODO change to test
+    test_batcher = BatchLoader(args, logger=logger, data_type='test') # TODO change to test
 
     # load model
     logger.info('Loading model to test: %s' % args.test_model)
@@ -215,6 +215,11 @@ def test():
             sentences = batch_docs[start:stop]
             # indices of targets
             doc_targets = np.where(batch_targets[start:stop] == 1)[0]
+
+            if not len(doc_targets):
+                start = stop
+                continue
+
             # how many top sentences to pick ?
             topk = len(doc_targets)
             # probabilities of sentences of doc with doc_id
